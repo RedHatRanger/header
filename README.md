@@ -1,4 +1,4 @@
-# `header` – File Header Management Script
+# `header` – File Header Management Script by RedHatRanger
 
 `header` is a Bash utility that automatically adds or updates a standardized metadata header at the top of files (YAML, Bash, Python, configs, etc.).
 It’s designed to help teams maintain consistent file documentation and versioning, while preserving shebangs (`#!/usr/bin/env bash`) and file permissions.
@@ -33,7 +33,7 @@ sudo chmod 755 /usr/local/bin/header
 
 ### Optional Vim Integration
 
-To automatically insert or update headers when editing YAML files, add the following to your `~/.vimrc`:
+To automatically insert or update headers when editing YAML files, add the following to your `~/.vimrc` (or globally in `/etc/vim/vimrc`):
 
 ```vim
 autocmd BufRead,BufNewFile *.yml,*.yaml !header %
