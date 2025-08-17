@@ -36,8 +36,8 @@ sudo chmod 755 /usr/local/bin/header
 To automatically insert or update headers when editing YAML files, add the following to your `~/.vimrc` (or globally in `/etc/vim/vimrc`):
 
 ```vim
-autocmd BufRead,BufNewFile *.yml,*.yaml !header %
-autocmd FileType yaml setlocal et ai ts=2 sw=2 sts=2
+autocmd BufRead,BufNewFile *.yml,*.yaml !header %  # Not Recommended as this will give a warning message each time to Load the File
+autocmd FileType yaml setlocal et ai ts=2 sw=2 sts=2  # RECOMMENDED FOR 2-SPACED-TABS
 ```
 
 ---
