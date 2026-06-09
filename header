@@ -12,6 +12,7 @@
 # - Created On: preserved if present; otherwise set once.                                    #
 # - Last Modified: always updated.                                                           #
 # - Description: preserved unless you pass --desc "-" to force preserving                    #
+# - Usage: preserved unless you pass --usage "-" to force preserving                         #
 # - Version: starts at v1.0 and increments by 0.1 on each modification                       #
 ##############################################################################################
 
@@ -28,13 +29,15 @@ Header fields:
   - Created On: <preserved if exists; otherwise set once (YYYY-MM-DD HH:MM:SS)>
   - Last Modified: <always updated (YYYY-MM-DD HH:MM:SS)>
   - Modified By: <author of the last modification>
-  - Description: <set if provided, preserved if "-", otherwise "TODO: Add description">
   - Version: <starts at v1.0 and increments by 0.1 on each modification>
+  - Description: <set if provided, preserved if "-", otherwise "TODO: Add description">
+  - Usage: <set if provided, preserved if "-", otherwise "TODO: Add usage details">
 
 Options:
   -a, --author NAME        Author name to use (default: $(whoami))
   -m, --modified-by NAME   Modified By name to use (default: $(whoami))
   -d, --desc TEXT          Description to set. Use "-" to preserve existing Description.
+  -u, --usage TEXT         Usage instructions to set.
   -f, --force-author       Overwrite existing Author with the provided name.
   -h, --help               Show this help and exit.
 
@@ -62,7 +65,7 @@ Examples:
   header --author devops --desc "Infra configs" config1.yaml config2.yaml
 
 Notes:
-  - Preserves shebang (#!) on the first line if present (useful for Bash and Python scripts)
+  - Preserves shebang (#!) on the first line if present.
   - Preserves original file permissions.
 EOF
 }
@@ -70,8 +73,10 @@ EOF
 author="$(whoami)"
 modified_by="$(whoami)"
 desc=""
+usage_text=""
 force_author="0"
 update_desc="0"
+update_usage="0"
 files=()
 
 # Parse args
@@ -86,6 +91,9 @@ while [[ $# -gt 0 ]]; do
     -d|--desc)
       [[ $# -lt 2 ]] && { echo "Missing value for --desc" >&2; exit 1; }
       desc="$2"; shift 2 ;;
+    -u|--usage)
+      [[ $# -lt 2 ]] && { echo "Missing value for --usage" >&2; exit 1; }
+      usage_text="$2"; shift 2 ;;
     -f|--force-author)
       force_author="1"; shift ;;
     -h|--help)
@@ -95,13 +103,16 @@ while [[ $# -gt 0 ]]; do
     * )
       files+=("$1"); shift ;;
   esac
- done
+done
 
 [[ ${#files[@]} -eq 0 ]] && { usage; exit 1; }
 
-# Description update behavior
+# Description & Usage update behavior
 if [[ -n "$desc" && "$desc" != "-" ]]; then
   update_desc="1"
+fi
+if [[ -n "$usage_text" && "$usage_text" != "-" ]]; then
+  update_usage="1"
 fi
 
 # Portable perms (Linux/macOS)
@@ -142,17 +153,17 @@ process_file() {
         -v modified_by="$modified_by" \
         -v desc="$desc" \
         -v update_desc="$update_desc" \
+        -v usage_text="$usage_text" \
+        -v update_usage="$update_usage" \
         -v now="$now" \
         -v created_now="$now" \
         -v force_author="$force_author" \
-        '
-      function inc_version(v,    major, minor, new_minor, new_version) {
-        # v expected format: vX.Y
+    '
+      function inc_version(v,   major, minor, new_minor, new_version) {
         if (match(v, /^v([0-9]+)\.([0-9]+)$/, arr)) {
           major = arr[1]
           minor = arr[2] + 0
           new_minor = minor + 1
-          # Keep one decimal place, so if minor >= 10, roll over
           if (new_minor >= 10) {
             major += 1
             new_minor = 0
@@ -162,17 +173,17 @@ process_file() {
         }
         return "v1.0"
       }
-      BEGIN { in_hdr=1; seen_created=0; seen_lastmod=0; seen_desc=0; seen_modby=0; seen_author=0; seen_version=0; version="v1.0" }
+      BEGIN { in_hdr=1; seen_created=0; seen_lastmod=0; seen_desc=0; seen_usage=0; seen_modby=0; seen_author=0; seen_version=0; version="v1.0" }
       NR==1 && $0 ~ /^#!/ { print; next }
       {
         if (in_hdr) {
           if ($0 ~ /^#\s*$/) {
-            # Version line already printed when matched, do nothing here
             if (!seen_created) { print "# Created On: " created_now }
             if (!seen_lastmod) { print "# Last Modified: " now }
             if (!seen_modby)   { print "# Modified By: " modified_by }
             if (!seen_author)  { print "# Author: " author }
             if (update_desc=="1" && !seen_desc) { print "# Description: " desc }
+            if (update_usage=="1" && !seen_usage) { print "# Usage: " usage_text }
             print
             in_hdr=0
             next
@@ -180,7 +191,6 @@ process_file() {
 
           if ($0 ~ /^# *Version:/) {
             seen_version=1
-            # Increment version
             split($0, parts, ":")
             ver = gensub(/^[ \t]+/, "", "g", parts[2])
             version = inc_version(ver)
@@ -188,7 +198,6 @@ process_file() {
             next
           }
 
-          # Created On normalization
           if ($0 ~ /^# *Created On:/) { seen_created=1; print; next }
           if ($0 ~ /^# *Date Created:/) {
             line=$0; sub(/^# *Date Created: */, "", line)
@@ -201,30 +210,44 @@ process_file() {
             seen_created=1; next
           }
 
-          # Author: preserve existing value unless --force-author is set
           if ($0 ~ /^# *Author:/) {
             seen_author=1
             if (force_author=="1") { print "# Author: " author } else { print }
             next
           }
 
-          # Last Modified: always update to now
           if ($0 ~ /^# *Last Modified:/) { print "# Last Modified: " now; seen_lastmod=1; next }
-
-          # Modified By: always set to current modified_by
           if ($0 ~ /^# *Modified By:/) { print "# Modified By: " modified_by; seen_modby=1; next }
 
-          # Description
           if ($0 ~ /^# *Description:/) {
             if (update_desc=="1") { print "# Description: " desc } else { print }
             seen_desc=1; next
+          }
+
+          if ($0 ~ /^# *Usage:/) {
+            if (update_usage=="1") { print "# Usage: " usage_text } else { print }
+            seen_usage=1; next
           }
 
           print; next
         }
         print
       }
+      END {
+        # If we went through the block but never encountered a Usage line, append it right below description
+        # handled mid-flight or at bottom of block if missing entirely.
+      }
     ' "$file" > "$tmp"
+    
+    # Quick structural check to verify Usage block wasn't dropped if it was entirely missing from previous version header
+    if ! grep -q "^# Usage:" "$tmp"; then
+       # Inject right after description if missing
+       awk -v ut="${usage_text:-TODO: Add usage details}" '
+         /^# Description:/ { print; print "# Usage: " ut; next }
+         { print }
+       ' "$tmp" > "$tmp.bak" && mv "$tmp.bak" "$tmp"
+    fi
+
   else
     # Create new header with version v1.0
     {
@@ -236,6 +259,7 @@ process_file() {
       echo "# Modified By: $modified_by"
       echo "# Version: v1.0"
       echo "# Description: ${desc:-TODO: Add description}"
+      echo "# Usage: ${usage_text:-TODO: Add usage details}"
       echo "#"
       echo
       cat "$body"
